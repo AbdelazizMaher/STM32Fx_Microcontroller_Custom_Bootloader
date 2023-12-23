@@ -1,0 +1,23 @@
+14:28:04 **** Incremental Build of configuration Debug for project STM32F4_Custom_Bootloader_UserApp ****
+make -j16 all 
+Building file: ../Core/Src/system_stm32f4xx.c
+Invoking: MCU GCC Compiler
+C:\Users\Abdel\OneDrive\Documents\eclipseWorkspace\Custom_Bootloader\STM32F4_Custom_Bootloader_UserApp\Debug
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -DUSE_HAL_DRIVER -DSTM32F407xx -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_Custom_Bootloader_UserApp/Core/Inc" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_Custom_Bootloader_UserApp/Drivers/STM32F4xx_HAL_Driver/Inc" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_Custom_Bootloader_UserApp/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_Custom_Bootloader_UserApp/Drivers/CMSIS/Device/ST/STM32F4xx/Include" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_Custom_Bootloader_UserApp/Drivers/CMSIS/Include"  -Og -g3 -Wall -fmessage-length=0 -ffunction-sections -c -fmessage-length=0 -MMD -MP -MF"Core/Src/system_stm32f4xx.d" -MT"Core/Src/system_stm32f4xx.o" -o "Core/Src/system_stm32f4xx.o" "../Core/Src/system_stm32f4xx.c"
+Finished building: ../Core/Src/system_stm32f4xx.c
+ 
+Building target: STM32F4_Custom_Bootloader_UserApp.elf
+Invoking: MCU GCC Linker
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -specs=nosys.specs -specs=nano.specs -T"../STM32F407VGTx_FLASH.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "STM32F4_Custom_Bootloader_UserApp.elf" @"objects.list"   -lm
+Finished building target: STM32F4_Custom_Bootloader_UserApp.elf
+ 
+C:/Ac6/SystemWorkbench/plugins/fr.ac6.mcu.externaltools.arm-none.win32_1.17.0.201812190825/tools/make/make --no-print-directory post-build
+Generating hex and Printing size information:
+arm-none-eabi-objcopy -O ihex "STM32F4_Custom_Bootloader_UserApp.elf" "STM32F4_Custom_Bootloader_UserApp.hex"
+arm-none-eabi-size "STM32F4_Custom_Bootloader_UserApp.elf"
+   text	   data	    bss	    dec	    hex	filename
+   5024	     20	   1636	   6680	   1a18	STM32F4_Custom_Bootloader_UserApp.elf
+ 
+
+14:28:05 Build Finished (took 1s.207ms)
+
