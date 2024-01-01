@@ -1,6 +1,23 @@
-14:28:55 **** Incremental Build of configuration Debug for project STM32F4_CustomBootloader ****
+13:09:21 **** Incremental Build of configuration Debug for project STM32F4_CustomBootloader ****
 make -j16 all 
-make: Nothing to be done for 'all'.
+Building file: ../Core/Src/main.c
+Invoking: MCU GCC Compiler
+C:\Users\Abdel\OneDrive\Documents\eclipseWorkspace\Custom_Bootloader\STM32F4_CustomBootloader\Debug
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -DUSE_HAL_DRIVER -DSTM32F407xx -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_CustomBootloader/Core/Inc" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_CustomBootloader/Drivers/STM32F4xx_HAL_Driver/Inc" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_CustomBootloader/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_CustomBootloader/Drivers/CMSIS/Device/ST/STM32F4xx/Include" -I"C:/Users/Abdel/OneDrive/Documents/eclipseWorkspace/Custom_Bootloader/STM32F4_CustomBootloader/Drivers/CMSIS/Include"  -Og -g3 -Wall -fmessage-length=0 -ffunction-sections -c -fmessage-length=0 -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" -o "Core/Src/main.o" "../Core/Src/main.c"
+Finished building: ../Core/Src/main.c
+ 
+Building target: STM32F4_CustomBootloader.elf
+Invoking: MCU GCC Linker
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -specs=nosys.specs -specs=nano.specs -T"../STM32F407VGTx_FLASH.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "STM32F4_CustomBootloader.elf" @"objects.list"   -lm
+Finished building target: STM32F4_CustomBootloader.elf
+ 
+C:/Ac6/SystemWorkbench/plugins/fr.ac6.mcu.externaltools.arm-none.win32_1.17.0.201812190825/tools/make/make --no-print-directory post-build
+Generating hex and Printing size information:
+arm-none-eabi-objcopy -O ihex "STM32F4_CustomBootloader.elf" "STM32F4_CustomBootloader.hex"
+arm-none-eabi-size "STM32F4_CustomBootloader.elf"
+   text	   data	    bss	    dec	    hex	filename
+  11744	    128	   1896	  13768	   35c8	STM32F4_CustomBootloader.elf
+ 
 
-14:28:55 Build Finished (took 235ms)
+13:09:23 Build Finished (took 2s.353ms)
 

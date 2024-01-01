@@ -2,16 +2,26 @@
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
 		<item value="false" key="isRegEx"/>
-		<item value="VECT_TAB_OFFSET" key="selection"/>
+		<item value="STM32F407xx" key="selection"/>
 		<item value="false" key="casesensitive"/>
 		<item value="false" key="incremental"/>
 		<item value="true" key="wrap"/>
 		<item value="false" key="wholeword"/>
 		<list key="findhistory">
+			<item value="STM32F446RE"/>
+			<item value="STM32F446xx"/>
+			<item value="BL_DEBUG_MSG:"/>
+			<item value=";"/>
+			<item value="bootloader_handle_"/>
 			<item value="VECT_TAB_OFFSET"/>
 			<item value="SystemInit"/>
 		</list>
 		<list key="replacehistory">
+			<item value="STM32F407xx"/>
+			<item value="[BL_DEBUG_MSG] "/>
+			<item value="[BL_DEBUG_MSG]"/>
+			<item value=""/>
+			<item value="Bootloader_Handle_"/>
 		</list>
 	</section>
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">

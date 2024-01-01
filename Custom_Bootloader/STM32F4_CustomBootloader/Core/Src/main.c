@@ -36,6 +36,15 @@ CRC_HandleTypeDef hcrc;
 
 UART_HandleTypeDef huart2;
 
+uint8_t Supported_Commands[] = {
+		BL_GET_VER,
+		BL_GET_HELP,
+		BL_GET_CID,
+		BL_GET_RDP_STATUS,
+		BL_GO_TO_ADDR,
+		BL_FLASH_ERASE,
+		BL_MEM_WRITE,
+		BL_READ_SECTOR_P_STATUS} ;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -45,8 +54,9 @@ static void MX_USART2_UART_Init(void);
 static void printmsg(char* format,...);
 
 /* Private user code ---------------------------------------------------------*/
-uint8_t somedata[] = "Hello from Bootloader\r\n";
 
+#define BL_RX_LEN  200
+uint8_t Bl_RX_Buffer[BL_RX_LEN];
 
 
 /**
@@ -68,17 +78,17 @@ int main(void)
 	MX_CRC_Init();
 	MX_USART2_UART_Init();
 
-	if( HAL_GPIO_ReadPin(A0_GPIO_Port , A0_Pin) == GPIO_PIN_SET )
+	if( HAL_GPIO_ReadPin(Button_Port , Button_Pin) == GPIO_PIN_SET )
 	{
 		// Debug message
-		printmsg("BL_DEBUG_MSG:Button is pressed .. going to BL mode\n\r");
+		printmsg("[BL_DEBUG_MSG] Button is pressed .. going to BL mode\n\r");
 		// Continue in Bootloader mode
 		Bootloader_ReadData();
 	}
 	else
 	{
 		// Debug message
-		printmsg("BL_DEBUG_MSG:Button is not pressed .. executing user app\n\r");
+		printmsg("[BL_DEBUG_MSG] Button is not pressed .. Executing User App\n\r");
 		// Bootloader jump to user app
 		Bootloader_JumpTo_UserApp();
 	}
@@ -87,7 +97,63 @@ int main(void)
 
 void Bootloader_ReadData()
 {
+	uint8_t Rec_Len = 0;
 
+	while(1)
+	{
+		// Reset Buffer to receive new data
+		memset(Bl_RX_Buffer,0,BL_RX_LEN);
+
+		// Receive First Byte -> Data To Follow Length
+		HAL_UART_Receive(&huart2, &Bl_RX_Buffer[0], 1, HAL_MAX_DELAY);
+		Rec_Len = Bl_RX_Buffer[0];
+
+		// Receive Second Byte -> Command Byte
+		HAL_UART_Receive(&huart2, &Bl_RX_Buffer[1], (uint16_t)Rec_Len, HAL_MAX_DELAY);
+
+		switch( Bl_RX_Buffer[1] )
+		{
+		case BL_GET_VER:
+			Bootloader_Handle_GetVer_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_GET_HELP:
+			Bootloader_Handle_GetHelp_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_GET_CID:
+			Bootloader_Handle_GetCid_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_GET_RDP_STATUS:
+			Bootloader_Handle_GetRdp_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_GO_TO_ADDR:
+			Bootloader_Handle_GoToAddr_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_FLASH_ERASE:
+			Bootloader_Handle_FlashErase_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_MEM_WRITE:
+			Bootloader_Handle_MemWrite_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_EN_RW_PROTECT:
+			Bootloader_Handle_EnRW_Protect_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_MEM_READ:
+			Bootloader_Handle_MemRead_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_READ_SECTOR_P_STATUS:
+			Bootloader_Handle_ReadSector_ProtectionStatus_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_OTP_READ:
+			Bootloader_Handle_ReadOtp_Cmd(Bl_RX_Buffer);
+			break;
+		case BL_DIS_R_W_PROTECT:
+			Bootloader_Handle_DisRW_Protect_Cmd(Bl_RX_Buffer);
+			break;
+		default:
+			printmsg("[BL_DEBUG_MSG] Invalid command code received from host \n");
+			break;
+		}
+	}
 }
 
 void Bootloader_JumpTo_UserApp()
@@ -95,12 +161,12 @@ void Bootloader_JumpTo_UserApp()
 	// Function pointer to hold the address of the Reset Handler of the User App
 	void(*pApp_ResetHandler)(void);
 
-	printmsg("BL_DEBUG_MSG:Bootloader_Jump_To_UserApp\n");
+	printmsg("[BL_DEBUG_MSG] Bootloader_Jump_To_UserApp\n");
 
 	// 1. Configure the MSP -> base address of Flash Sector 2
 	uint32_t App_MSP = *(volatile uint32_t*)FLASH_SECTOR2_BASEADDR;
 
-	printmsg("BL_DEBUG_MSG:App_MSP value : %#x\n",App_MSP);
+	printmsg("[BL_DEBUG_MSG] App_MSP value : %#x\n",App_MSP);
 
 	__set_MSP(App_MSP);
 
@@ -109,9 +175,9 @@ void Bootloader_JumpTo_UserApp()
 
 	pApp_ResetHandler = (void*)App_ResetHandler_ADDr;
 
-	printmsg("BL_DEBUG_MSG:App Reset_Handler Addr : %#x\n",App_ResetHandler_ADDr);
+	printmsg("[BL_DEBUG_MSG] App Reset_Handler Addr : %#x\n",App_ResetHandler_ADDr);
 
-    //3. Jump to Reset Handler of the UserApp
+	//3. Jump to Reset Handler of the UserApp
 	pApp_ResetHandler();
 }
 
@@ -128,11 +194,502 @@ void printmsg(char* format,...)
 	// Send the formatted output to str using the argument list passed to it
 	vsprintf(str,format,args);
 	// Transmit data over UART
-	HAL_UART_Transmit(&huart2, somedata,sizeof(somedata), HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2, (uint8_t*)str,sizeof(str), HAL_MAX_DELAY);
 	// Ending argument list traversal
 	va_end(args);
 #endif
 }
+
+/************************ Implementation of Bootloader Command Handle APIs ************************/
+
+// Function That handles BL_GET_VER Command
+void Bootloader_Handle_GetVer_Cmd(uint8_t *pBuffer)
+{
+	uint8_t BL_Version = 0;
+
+	printmsg("[BL_DEBUG_MSG] Bootloader_Handle_GetVer_Cmd\n");
+
+	// Total length of the Command Packet
+	uint8_t CommandPacket_Len = pBuffer[0] + 1;
+	// Packet Length without CRC
+	uint8_t PayloadPacket_Len = CommandPacket_Len  - 4;
+	// extract the CRC32 sent by the Host
+	uint32_t Host_CRC = *( (uint32_t*)(pBuffer + PayloadPacket_Len) );
+
+	// CRC Check
+	if( Bootloader_VerifyCRC(pBuffer, PayloadPacket_Len, Host_CRC) )
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Success !!\n");
+		// Send ACK -> Notify Host that Command was received correctly
+		Bootloader_Uart_SendACK(1);
+		// Get Bootloader Version
+		BL_Version = Bootloader_GetVer();
+
+		printmsg("[BL_DEBUG_MSG] BL_VER : %d %#x\n",BL_Version,BL_Version);
+
+		// Send Reply To Host
+		Bootloader_Uart_SendReply(&BL_Version,1);
+	}
+	else
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Failed !!\n");
+		// Send NACK -> Notify Host that Command wasn't received correctly
+		Bootloader_Uart_SendNACK();
+	}
+}
+
+void Bootloader_Handle_GetHelp_Cmd(uint8_t *pBuffer)
+{
+	printmsg("[BL_DEBUG_MSG] Bootloader_Handle_GetHelp_Cmd\n");
+
+	// Total length of the Command Packet
+	uint8_t CommandPacket_Len = pBuffer[0] + 1;
+	// Packet Length without CRC
+	uint8_t PayloadPacket_Len = CommandPacket_Len  - 4;
+	// extract the CRC32 sent by the Host
+	uint32_t Host_CRC = *( (uint32_t*)(pBuffer + PayloadPacket_Len) );
+
+	// CRC Check
+	if( Bootloader_VerifyCRC(pBuffer, PayloadPacket_Len, Host_CRC) )
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Success !!\n");
+		// Send ACK -> Notify Host that Command was received correctly
+		Bootloader_Uart_SendACK( sizeof(Supported_Commands) );
+		// Send Reply To Host
+		Bootloader_Uart_SendReply(Supported_Commands,sizeof(Supported_Commands));
+	}
+	else
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Failed !!\n");
+		// Send NACK -> Notify Host that Command wasn't received correctly
+		Bootloader_Uart_SendNACK();
+	}
+}
+
+void Bootloader_Handle_GetCid_Cmd(uint8_t *pBuffer)
+{
+	uint16_t BL_MCU_ChipID = 0;
+
+	printmsg("[BL_DEBUG_MSG] Bootloader_Handle_GetCid_Cmd\n");
+
+	// Total length of the Command Packet
+	uint8_t CommandPacket_Len = pBuffer[0] + 1;
+	// Packet Length without CRC
+	uint8_t PayloadPacket_Len = CommandPacket_Len  - 4;
+	// extract the CRC32 sent by the Host
+	uint32_t Host_CRC = *( (uint32_t*)(pBuffer + PayloadPacket_Len) );
+
+	// CRC Check
+	if( Bootloader_VerifyCRC(pBuffer, PayloadPacket_Len, Host_CRC) )
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Success !!\n");
+		// Send ACK -> Notify Host that Command was received correctly
+		Bootloader_Uart_SendACK(2);
+		// Get MCU Chip Identification Number
+		BL_MCU_ChipID = Bootloader_MCU_GetChipID();
+
+		printmsg("[BL_DEBUG_MSG] CID : %d %#x\n",BL_MCU_ChipID,BL_MCU_ChipID);
+
+		// Send Reply To Host
+		Bootloader_Uart_SendReply( (uint8_t*)&BL_MCU_ChipID, 2 );
+	}
+	else
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Failed !!\n");
+		// Send NACK -> Notify Host that Command wasn't received correctly
+		Bootloader_Uart_SendNACK();
+	}
+}
+
+void Bootloader_Handle_GetRdp_Cmd(uint8_t *pBuffer)
+{
+	uint8_t BL_MCU_RdpLevel = 0;
+
+	printmsg("[BL_DEBUG_MSG] Bootloader_Handle_GetRdp_Cmd\n");
+
+	// Total length of the Command Packet
+	uint8_t CommandPacket_Len = pBuffer[0] + 1;
+	// Packet Length without CRC
+	uint8_t PayloadPacket_Len = CommandPacket_Len  - 4;
+	// extract the CRC32 sent by the Host
+	uint32_t Host_CRC = *( (uint32_t*)(pBuffer + PayloadPacket_Len) );
+
+	// CRC Check
+	if( Bootloader_VerifyCRC(pBuffer, PayloadPacket_Len, Host_CRC) )
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Success !!\n");
+		// Send ACK -> Notify Host that Command was received correctly
+		Bootloader_Uart_SendACK(1);
+		// Get MCU Flash Protection Level
+		BL_MCU_RdpLevel = Bootloader_MCU_GetFlash_RdpLevel();
+
+		printmsg("[BL_DEBUG_MSG] RDP_STATUS : %d %#x\n",BL_MCU_RdpLevel,BL_MCU_RdpLevel);
+
+		// Send Reply To Host
+		Bootloader_Uart_SendReply(&BL_MCU_RdpLevel, 1);
+	}
+	else
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Failed !!\n");
+		// Send NACK -> Notify Host that Command wasn't received correctly
+		Bootloader_Uart_SendNACK();
+	}
+}
+
+void Bootloader_Handle_GoToAddr_Cmd(uint8_t *pBuffer)
+{
+	uint8_t Addr_InValid = ADDR_INVALID;
+	uint8_t Addr_Valid = ADDR_VALID;
+	uint32_t BL_GoTo_Addr = 0;
+
+	printmsg("[BL_DEBUG_MSG] Bootloader_Handle_GoToAddr_Cmd\n");
+
+	// Total length of the Command Packet
+	uint8_t CommandPacket_Len = pBuffer[0] + 1;
+	// Packet Length without CRC
+	uint8_t PayloadPacket_Len = CommandPacket_Len  - 4;
+	// extract the CRC32 sent by the Host
+	uint32_t Host_CRC = *( (uint32_t*)(pBuffer + PayloadPacket_Len) );
+
+	// CRC Check
+	if( Bootloader_VerifyCRC(pBuffer, PayloadPacket_Len, Host_CRC) )
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Success !!\n");
+		// Send ACK -> Notify Host that Command was received correctly
+		Bootloader_Uart_SendACK(1);
+
+		// Extract the GoTo Address
+		BL_GoTo_Addr = *(uint32_t*)( pBuffer + 2 );
+
+		if( Bootloader_VerifyAddress(BL_GoTo_Addr) == ADDR_VALID )
+		{
+			// Notify host that Address is Valid
+			Bootloader_Uart_SendReply(&Addr_Valid, 1);
+			// Function pointer to hold the address of the GoTo Address
+			void(*pJump_ToAddr)(void);
+			// Assign address to that pointer (make T bit = 1) -> When PC sees first bit as 1 -> indicate THUMB2 instruction
+			pJump_ToAddr= (void*)( BL_GoTo_Addr + 1 );
+
+			printmsg("[BL_DEBUG_MSG] Jump to the GoTo Address !!\n");
+			// Jump to Addr
+			pJump_ToAddr();
+		}
+		else
+		{
+			printmsg("[BL_DEBUG_MSG] GoTo Address Invalid !!\n");
+			// Notify host that Address is InValid
+			Bootloader_Uart_SendReply(&Addr_InValid, 1);
+		}
+	}
+	else
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Failed !!\n");
+		// Send NACK -> Notify Host that Command wasn't received correctly
+		Bootloader_Uart_SendNACK();
+	}
+}
+
+void Bootloader_Handle_FlashErase_Cmd(uint8_t *pBuffer)
+{
+	uint8_t BL_EraseStatus = 0;
+
+	printmsg("[BL_DEBUG_MSG] Bootloader_Handle_FlashErase_Cmd\n");
+
+	// Total length of the Command Packet
+	uint8_t CommandPacket_Len = pBuffer[0] + 1;
+	// Packet Length without CRC
+	uint8_t PayloadPacket_Len = CommandPacket_Len  - 4;
+	// extract the CRC32 sent by the Host
+	uint32_t Host_CRC = *( (uint32_t*)(pBuffer + PayloadPacket_Len) );
+
+	// CRC Check
+	if( Bootloader_VerifyCRC(pBuffer, PayloadPacket_Len, Host_CRC) )
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Success !!\n");
+		// Send ACK -> Notify Host that Command was received correctly
+		Bootloader_Uart_SendACK(1);
+		printmsg("[BL_DEBUG_MSG] Initial_Sector: %d  No_OfSectors: %d  \n",pBuffer[2] , pBuffer[3]);
+		// Get Flash Erase status
+		HAL_GPIO_WritePin(LED_Port, LED_Pin,GPIO_PIN_SET);
+		BL_EraseStatus = Bootloader_FlashErase(pBuffer[2] , pBuffer[3]);
+		HAL_GPIO_WritePin(LED_Port, LED_Pin,GPIO_PIN_RESET);
+
+		printmsg("[BL_DEBUG_MSG] Flash Erase Status : %#x\n",BL_EraseStatus);
+
+		// Send Reply To Host
+		Bootloader_Uart_SendReply(&BL_EraseStatus, 1);
+	}
+	else
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Failed !!\n");
+		// Send NACK -> Notify Host that Command wasn't received correctly
+		Bootloader_Uart_SendNACK();
+	}
+}
+
+void Bootloader_Handle_MemWrite_Cmd(uint8_t *pBuffer)
+{
+	uint8_t Addr_InValid = ADDR_INVALID;
+	uint8_t PayloadLength = 0;
+	uint8_t WriteStatus = 0;
+	uint32_t BL_WriteTo_Addr = 0;
+
+	printmsg("[BL_DEBUG_MSG] Bootloader_Handle_MemWrite_Cmd\n");
+
+	// Total length of the Command Packet
+	uint8_t CommandPacket_Len = pBuffer[0] + 1;
+	// Packet Length without CRC
+	uint8_t PayloadPacket_Len = CommandPacket_Len  - 4;
+	// extract the CRC32 sent by the Host
+	uint32_t Host_CRC = *( (uint32_t*)(pBuffer + PayloadPacket_Len) );
+
+	// CRC Check
+	if( Bootloader_VerifyCRC(pBuffer, PayloadPacket_Len, Host_CRC) )
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Success !!\n");
+		// Send ACK -> Notify Host that Command was received correctly
+		Bootloader_Uart_SendACK(1);
+
+		// Extract the payload Address
+		BL_WriteTo_Addr = *(uint32_t*)( pBuffer + 2 );
+		// Extract the Payload length
+		PayloadLength = pBuffer[6];
+
+		printmsg("[BL_DEBUG_MSG] Memory Write Address: %d !!\n", BL_WriteTo_Addr);
+
+		if( Bootloader_VerifyAddress(BL_WriteTo_Addr) == ADDR_VALID )
+		{
+			printmsg("[BL_DEBUG_MSG] Valid Memory Write Address !!\n");
+
+			HAL_GPIO_WritePin(LED_Port, LED_Pin,GPIO_PIN_SET);
+			WriteStatus = Bootloader_MemWrite(&pBuffer[7], BL_WriteTo_Addr, PayloadLength);
+			HAL_GPIO_WritePin(LED_Port, LED_Pin,GPIO_PIN_RESET);
+
+			// Notify host about Write Status
+			Bootloader_Uart_SendReply(&WriteStatus, 1);
+
+		}
+		else
+		{
+			printmsg("[BL_DEBUG_MSG] UnValid Memory Write Address !!\n");
+			// Notify host that Address is InValid
+			Bootloader_Uart_SendReply(&Addr_InValid, 1);
+		}
+	}
+	else
+	{
+		printmsg("[BL_DEBUG_MSG] CRC Check Failed !!\n");
+		// Send NACK -> Notify Host that Command wasn't received correctly
+		Bootloader_Uart_SendNACK();
+	}
+}
+
+void Bootloader_Handle_EnRW_Protect_Cmd(uint8_t *pBuffer)
+{
+
+}
+
+void Bootloader_Handle_MemRead_Cmd(uint8_t *pBuffer)
+{
+
+}
+
+void Bootloader_Handle_ReadSector_ProtectionStatus_Cmd(uint8_t *pBuffer)
+{
+
+}
+
+void Bootloader_Handle_ReadOtp_Cmd(uint8_t *pBuffer)
+{
+
+}
+
+void Bootloader_Handle_DisRW_Protect_Cmd(uint8_t *pBuffer)
+{
+
+}
+
+
+CRC_CheckStatus Bootloader_VerifyCRC(uint8_t *pData, uint32_t Len, uint32_t CRC_Host)
+{
+	uint32_t uwCRCValue=0xff;
+
+	for (uint32_t i=0 ; i < Len ; i++)
+	{
+		uint32_t InData = pData[i];
+		uwCRCValue = HAL_CRC_Accumulate(&hcrc, &InData, 1);
+	}
+
+	/* Reset CRC Calculation Unit */
+	__HAL_CRC_DR_RESET(&hcrc);
+
+	if( uwCRCValue == CRC_Host)
+	{
+		return VERIFY_CRC_SUCCESS;
+	}
+
+	return VERIFY_CRC_FAIL;
+}
+
+uint8_t Bootloader_GetVer()
+{
+	return (uint8_t)BL_VERSION;
+}
+
+uint16_t Bootloader_MCU_GetChipID()
+{
+	/* The STM32F4xx MCUs integrate an MCU ID code. This ID identifies the ST MCU partnumber
+	and the die revision. It is part of the DBG_MCU component and is mapped on the
+	external PPB bus (see Section 38.16 on page 1700). This code is accessible using the
+	JTAG debug port (four to five pins) or the SW debug port (two pins) or by the user software.
+	It is even accessible while the MCU is under system reset. */
+
+	uint16_t CID;
+	CID = (uint16_t)(DBGMCU->IDCODE) & 0x07FF;
+	return  CID;
+
+}
+
+uint8_t Bootloader_MCU_GetFlash_RdpLevel()
+{
+	/* 0xAA:   Level 0, no protection
+	   0xCC:   Level 2, chip protection (debug and boot from RAM features disabled)
+	   Others: Level 1, read protection of memories (debug features limited) */
+
+	uint8_t Rdp_Status=0;
+#if 0
+	FLASH_OBProgramInitTypeDef  ob_handle;
+	HAL_FLASHEx_OBGetConfig(&ob_handle);
+	Rdp_Status = (uint8_t)ob_handle.RDPLevel;
+#else
+
+	volatile uint32_t *pOB_addr = (uint32_t*) 0x1FFFC000;
+	Rdp_Status =  (uint8_t)(*pOB_addr >> 8) ;
+#endif
+
+	return Rdp_Status;
+
+}
+
+Addr_CheckValid Bootloader_VerifyAddress(uint32_t GoTo_Addr)
+{
+
+	/* Can we jump to SRAM1   ? Yes
+       Can we jump to SRAM2   ? Yes
+	   Can we jump to BKPSRAM ? Yes
+	   Can we jump to PERIPH  ? No  */
+
+	if ( GoTo_Addr >= SRAM1_BASE && GoTo_Addr <= SRAM1_END)
+	{
+		return ADDR_VALID;
+	}
+	else if ( GoTo_Addr >= SRAM2_BASE && GoTo_Addr <= SRAM2_END)
+	{
+		return ADDR_VALID;
+	}
+	else if ( GoTo_Addr >= FLASH_BASE && GoTo_Addr <= FLASH_END)
+	{
+		return ADDR_VALID;
+	}
+	else if ( GoTo_Addr >= BKPSRAM_BASE && GoTo_Addr <= BKPSRAM_END)
+	{
+		return ADDR_VALID;
+	}
+	else
+	{
+		return ADDR_INVALID;
+	}
+}
+
+
+uint8_t Bootloader_FlashErase(uint8_t Sector_Number , uint8_t Number_OfSectors)
+{
+	//we have totally 8 sectors in STM32F407 MCU .. sector[0 to 7]
+	// if Sector_Number = 0xFF -> Mass Erase !
+
+	FLASH_EraseInitTypeDef flashErase_handle;
+	uint32_t SectorError;
+	HAL_StatusTypeDef Status;
+
+	if( Number_OfSectors > 8 )
+		return INVALID_SECTOR;
+
+	if( (Sector_Number == 0xFF ) || (Sector_Number <= 7) )
+	{
+		if( Sector_Number == (uint8_t) 0xFF )
+		{
+			flashErase_handle.TypeErase = FLASH_TYPEERASE_MASSERASE;
+		}
+		else
+		{
+			// How many Sectors needs to be erased
+			uint8_t Remanining_Sectors = 8 - Sector_Number;
+
+			if( Number_OfSectors > Remanining_Sectors)
+			{
+				Number_OfSectors = Remanining_Sectors;
+			}
+
+			flashErase_handle.TypeErase = FLASH_TYPEERASE_SECTORS;
+			flashErase_handle.Sector = Sector_Number;
+			flashErase_handle.NbSectors = Sector_Number;
+		}
+		flashErase_handle.Banks = FLASH_BANK_1;
+
+		// Get access to touch the flash registers
+		HAL_FLASH_Unlock();
+
+		flashErase_handle.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+		Status = (uint8_t) HAL_FLASHEx_Erase(&flashErase_handle, &SectorError);
+
+		HAL_FLASH_Lock();
+
+		return Status;
+	}
+
+	return INVALID_SECTOR;
+}
+
+uint8_t Bootloader_MemWrite(uint8_t *pBuffer, uint32_t MemAddress, uint32_t Len)
+{
+    uint8_t Status = HAL_OK;
+
+    // Get access to touch the flash registers
+    HAL_FLASH_Unlock();
+
+    for(uint32_t i = 0 ; i <Len ; i++)
+    {
+        // Here we program the flash byte by byte
+    	Status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE, MemAddress+i, pBuffer[i] );
+    }
+
+    HAL_FLASH_Lock();
+
+    return Status;
+}
+
+void Bootloader_Uart_SendACK(uint8_t Follow_DataLen)
+{
+	// Here we send 2 bytes.. first byte is ACK and the Second byte is Follow Len Value
+	uint8_t ACK_Buf[2];
+	ACK_Buf[0] = BL_ACK;
+	ACK_Buf[1] = Follow_DataLen;
+
+	HAL_UART_Transmit(&huart2,ACK_Buf,2,HAL_MAX_DELAY);
+}
+
+void Bootloader_Uart_SendNACK(void)
+{
+	uint8_t Nack = BL_NACK;
+	HAL_UART_Transmit(&huart2,&Nack,1,HAL_MAX_DELAY);
+}
+
+void Bootloader_Uart_SendReply(uint8_t *pBuffer,uint32_t Len)
+{
+	// Transmit Data
+	HAL_UART_Transmit(&huart2,pBuffer,Len,HAL_MAX_DELAY);
+}
+
 
 
 /**
@@ -249,6 +806,10 @@ static void MX_GPIO_Init(void)
 
 	/* GPIO Ports Clock Enable */
 	__HAL_RCC_GPIOA_CLK_ENABLE();
+	__HAL_RCC_GPIOD_CLK_ENABLE();
+
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : PA0 */
 	GPIO_InitStruct.Pin = GPIO_PIN_0;
@@ -256,6 +817,12 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+	/*Configure GPIO pin : PD12 */
+	GPIO_InitStruct.Pin = GPIO_PIN_12;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 }
 
 
